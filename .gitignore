@@ -1,0 +1,35 @@
+# Dependencies / OS-specific files
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Gemini Agent configs & Scratch files
+.agent/
+.gemini/
+scratch/
+implementation_plan.md
+task.md
+walkthrough.md
+*.png
+
+# Python cache / virtual environments
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+pip-log.txt
+pip-delete-this-directory.txt
+.venv/
+.env
+
+# Testing / Harness logs & report data
+harness/reports/dom_cache.json
+harness/reports/*.json
+harness/reports/*.png
+
+# Selenium Temp Profiles
+harness/temp_profile/
