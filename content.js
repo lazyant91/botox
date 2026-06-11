@@ -3,6 +3,7 @@
  */
 
 let blockedChannels = [];
+let blockShorts = true; // Shorts 차단 상태 전역 변수
 let lastClickedChannel = null;
 let lastClickedChannelDisplayName = null;
 let lastInjectedChannel = null;
@@ -12,15 +13,24 @@ function isContextValid() {
   return typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.id;
 }
 
-// 1. chrome.storage.local에서 차단 채널 목록 불러오기
+// 1. chrome.storage.local에서 차단 채널 목록 및 설정 불러오기
 function loadBlockedChannels() {
   return new Promise((resolve) => {
     if (!isContextValid()) {
       resolve([]);
       return;
     }
-    chrome.storage.local.get({ blockedChannels: [] }, (result) => {
+    chrome.storage.local.get({ blockedChannels: [], blockShorts: true }, (result) => {
       blockedChannels = result.blockedChannels;
+      blockShorts = result.blockShorts;
+      
+      // 초고속 CSS 필터링을 위한 body 클래스 제어
+      if (blockShorts) {
+        document.body.classList.add('botox-shorts-active');
+      } else {
+        document.body.classList.remove('botox-shorts-active');
+      }
+      
       resolve(blockedChannels);
     });
   });
@@ -68,30 +78,189 @@ function unblockChannel(channelIdentifier) {
   });
 }
 
-// 4. 유튜브 비디오 요소를 찾아서 필터링 적용
-function applyFiltering(resetVisibility = false) {
-  const videoElements = document.querySelectorAll(
-    'ytd-video-renderer, ytd-rich-item-renderer, ytd-compact-video-renderer'
+// 4. 고성능 렌더링 필터 구조 매핑 정의
+const CARD_SELECTOR = [
+  'ytd-video-renderer',
+  'ytd-rich-item-renderer',
+  'ytd-compact-video-renderer',
+  'ytd-reel-shelf-renderer',
+  'ytd-reel-item-renderer',
+  'ytd-shelf-renderer',
+  'grid-shelf-view-model'
+].join(',');
+
+let processed = new WeakSet();
+let pending = new Set();
+let filterTimer = null;
+let continuationTimer = null;
+
+function isShortsCard(card) {
+  const tagName = card.tagName.toLowerCase();
+  
+  // 1) 쇼츠 전용 선반 및 개별 쇼츠 렌더러 판정
+  if (
+    tagName === 'ytd-reel-shelf-renderer' ||
+    tagName === 'ytd-reel-item-renderer' ||
+    tagName === 'grid-shelf-view-model'
+  ) {
+    return true;
+  }
+
+  // 2) 일반 선반 내부에 쇼츠가 포함되어 있는 경우
+  if (tagName === 'ytd-shelf-renderer') {
+    return Boolean(
+      card.querySelector('a[href*="/shorts/"]') ||
+      card.querySelector('a[href*="/shorts?"]') ||
+      card.querySelector('a[href$="/shorts"]')
+    );
+  }
+
+  // 3) 개별 비디오 렌더러에 쇼츠 링크가 달린 경우
+  return Boolean(
+    card.querySelector('a[href*="/shorts/"]') ||
+    card.querySelector('a[href*="/shorts?"]') ||
+    card.querySelector('a[href$="/shorts"]') ||
+    card.querySelector('ytd-thumbnail-overlay-time-status-renderer[overlay-style="SHORTS"]')
   );
+}
 
-  videoElements.forEach(video => {
-    // Shorts 탭 또는 광고(sponsored) 비디오 제외
-    if (video.querySelector('ytd-thumbnail-overlay-time-status-renderer[overlay-style="SHORTS"]') || 
-        video.querySelector('.ytd-display-ad-renderer') ||
-        video.querySelector('.ytd-ad-slot-renderer') ||
-        video.querySelector('#sponsored-badge-label')) {
-      return;
+// 개별 요소의 실제 필터링 적용 처리
+function filterCard(card, resetVisibility = false) {
+  if (!(card instanceof HTMLElement)) return false;
+  
+  if (resetVisibility) {
+    card.classList.remove('botox-hidden-short');
+    card.style.setProperty('display', '', '');
+    return false;
+  }
+
+  if (processed.has(card)) return false;
+  processed.add(card);
+
+  // 쇼츠 필터링 대상인 경우 class 격리
+  if (isShortsCard(card)) {
+    if (blockShorts) {
+      card.classList.add('botox-hidden-short');
+      return true;
     }
+    return false;
+  }
 
-    const channelId = extractChannelIdentifier(video);
-    if (channelId) {
-      if (blockedChannels.includes(channelId)) {
-        video.style.setProperty('display', 'none', 'important');
-      } else if (resetVisibility) {
-        video.style.setProperty('display', '', '');
+  // 광고(sponsored) 비디오 제외
+  if (card.querySelector('.ytd-display-ad-renderer') ||
+      card.querySelector('.ytd-ad-slot-renderer') ||
+      card.querySelector('#sponsored-badge-label')) {
+    return false;
+  }
+
+  // 채널 차단 필터 적용
+  const channelId = extractChannelIdentifier(card);
+  if (channelId) {
+    if (blockedChannels.includes(channelId)) {
+      card.style.setProperty('display', 'none', 'important');
+      return true;
+    }
+  }
+
+  return false;
+}
+
+// 디바운스 필터 및 가상 높이 보정 연산
+function applyFiltering(resetVisibility = false) {
+  if (resetVisibility) {
+    processed = new WeakSet();
+    const allCards = document.querySelectorAll(CARD_SELECTOR);
+    allCards.forEach(card => filterCard(card, true));
+    return;
+  }
+
+  // 초기 로드 시 전체 스캔을 pending에 추가
+  const allElements = document.querySelectorAll(CARD_SELECTOR);
+  scheduleFilter(allElements);
+}
+
+function scheduleFilter(candidates) {
+  for (const item of candidates) {
+    pending.add(item);
+  }
+
+  clearTimeout(filterTimer);
+  filterTimer = setTimeout(() => {
+    let processedCount = 0;
+    let hiddenCount = 0;
+
+    for (const card of pending) {
+      processedCount++;
+      if (filterCard(card)) {
+        hiddenCount++;
       }
     }
-  });
+
+    pending.clear();
+
+    if (hiddenCount > 0) {
+      // 1) 쇼츠 차단 비율 계산 후 continuation 잠금 조절
+      const ratio = hiddenCount / Math.max(1, processedCount);
+      lockContinuation(ratio > 0.4 ? 1200 : 600);
+      
+      // 2) 가상 높이 보정 (Layout Shift 방지 지지대)
+      stabilizeFeedHeight(hiddenCount);
+    }
+  }, 150);
+}
+
+// 4.2. 피드 세로 길이 수축 방지를 위한 가상 지지대 할당 (Stabilize)
+function stabilizeFeedHeight(hiddenCount) {
+  const feed = document.querySelector('ytd-section-list-renderer') ||
+               document.querySelector('ytd-rich-grid-renderer') ||
+               document.querySelector('#contents');
+
+  if (!feed) return;
+
+  const estimatedCardHeight = 140; // 비디오 카드 평균 세로 길이 추정치
+  const extraHeight = Math.min(hiddenCount * estimatedCardHeight, 3000);
+
+  feed.style.setProperty('--botox-extra-height', `${extraHeight}px`);
+  feed.classList.add('botox-feed-stabilized');
+
+  setTimeout(() => {
+    feed.classList.remove('botox-feed-stabilized');
+    feed.style.removeProperty('--botox-extra-height');
+  }, 1500);
+}
+
+// 4.3. 후보군 수집 헬퍼
+function collectCandidates(node, candidates) {
+  if (!(node instanceof HTMLElement)) return;
+
+  if (node.matches(CARD_SELECTOR)) {
+    candidates.add(node);
+  }
+
+  const childs = node.querySelectorAll(CARD_SELECTOR);
+  for (const child of childs) {
+    candidates.add(child);
+  }
+}
+
+// 4.4. 동적 로딩 지연 락커
+function lockContinuation(ms) {
+  const loaders = document.querySelectorAll('ytd-continuation-item-renderer');
+  for (const loader of loaders) {
+    loader.style.setProperty('display', 'none', 'important');
+    loader.dataset.botoxContinuationLocked = 'true';
+  }
+
+  clearTimeout(continuationTimer);
+  continuationTimer = setTimeout(() => {
+    const lockedLoaders = document.querySelectorAll(
+      'ytd-continuation-item-renderer[data-botox-continuation-locked="true"]'
+    );
+    for (const loader of lockedLoaders) {
+      loader.style.removeProperty('display');
+      delete loader.dataset.botoxContinuationLocked;
+    }
+  }, ms);
 }
 
 // 5. 비디오 엘리먼트 내에서 고유 채널 식별자(@핸들명 또는 구형 /channel/ID) 추출
@@ -510,6 +679,14 @@ if (isContextValid()) {
       blockedChannels = message.blockedChannels;
       applyFiltering(true);
       updateSettingModalList();
+    } else if (message.action === "UPDATE_BLOCK_SHORTS") {
+      blockShorts = message.blockShorts;
+      if (blockShorts) {
+        document.body.classList.add('botox-shorts-active');
+      } else {
+        document.body.classList.remove('botox-shorts-active');
+      }
+      applyFiltering(true);
     }
   });
 }
@@ -521,9 +698,18 @@ async function init() {
   injectSettingUI();
   watchMenuPopup();
 
-  // 유튜브 동적 로딩 대응 감시
-  const observer = new MutationObserver(() => {
-    applyFiltering();
+  // 1) 고성능 addedNodes 기반 감시자 정의
+  const observer = new MutationObserver((mutations) => {
+    const candidates = new Set();
+    for (const mutation of mutations) {
+      for (const node of mutation.addedNodes) {
+        collectCandidates(node, candidates);
+      }
+    }
+
+    if (candidates.size > 0) {
+      scheduleFilter(candidates);
+    }
   });
 
   observer.observe(document.body, {
@@ -531,6 +717,12 @@ async function init() {
     subtree: true
   });
 }
+
+// 2) SPA 라우팅 네비게이션 완료 시 캐시 청소 및 초기 탐색 트리거
+document.addEventListener("yt-navigate-finish", () => {
+  processed = new WeakSet();
+  applyFiltering();
+});
 
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', init);

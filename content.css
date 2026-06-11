@@ -186,3 +186,30 @@
 .delete-ch-btn:hover {
   color: #ff3b30;
 }
+
+/* 4. Shorts 즉각 차단을 위한 초고속 CSS 셀렉터 */
+body.botox-shorts-active ytd-reel-shelf-renderer,
+body.botox-shorts-active ytd-reel-item-renderer,
+body.botox-shorts-active grid-shelf-view-model,
+body.botox-shorts-active ytd-shelf-renderer:has(a[href*="/shorts/"]),
+body.botox-shorts-active ytd-video-renderer:has(a[href*="/shorts/"]),
+body.botox-shorts-active ytd-video-renderer:has(a[href*="/shorts?"]),
+body.botox-shorts-active ytd-video-renderer:has(a[href$="/shorts"]),
+body.botox-shorts-active ytd-rich-item-renderer:has(a[href*="/shorts/"]),
+body.botox-shorts-active ytd-rich-item-renderer:has(a[href*="/shorts?"]),
+body.botox-shorts-active ytd-rich-item-renderer:has(a[href$="/shorts"]),
+body.botox-shorts-active ytd-compact-video-renderer:has(a[href*="/shorts/"]),
+body.botox-shorts-active ytd-compact-video-renderer:has(a[href*="/shorts?"]),
+body.botox-shorts-active ytd-compact-video-renderer:has(a[href$="/shorts"]),
+body.botox-shorts-active .botox-hidden-short,
+.botox-hidden-short {
+  display: none !important;
+}
+
+/* 5. 무한 스크롤 및 지연 로딩 렉 방지를 위한 피드 높이 보정 지지대 */
+.botox-feed-stabilized::after {
+  content: "";
+  display: block;
+  height: var(--botox-extra-height, 0px);
+  width: 100%;
+}

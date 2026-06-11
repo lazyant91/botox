@@ -338,6 +338,31 @@ document.addEventListener('DOMContentLoaded', () => {
     if (e.key === 'Enter') addChannel();
   });
 
+  // Shorts 토글 스위치 처리 추가
+  const shortsToggle = document.getElementById('shorts-toggle');
+  if (shortsToggle) {
+    // 로컬 스토리지에서 상태 로드
+    chrome.storage.local.get({ blockShorts: true }, (result) => {
+      shortsToggle.checked = result.blockShorts;
+    });
+
+    // 변경 시 저장 및 탭 전파
+    shortsToggle.addEventListener('change', () => {
+      const blockShorts = shortsToggle.checked;
+      chrome.storage.local.set({ blockShorts: blockShorts }, () => {
+        chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+          if (tabs && tabs[0]) {
+            chrome.tabs.sendMessage(tabs[0].id, {
+              action: "UPDATE_BLOCK_SHORTS",
+              blockShorts: blockShorts
+            });
+          }
+        });
+      });
+    });
+  }
+
   // 초기 실행
   loadChannels();
 });
+
