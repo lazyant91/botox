@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "YouTube AI Channel Filter",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "유튜브 검색 결과에서 특정 채널을 필터링 및 차단합니다.",
   "permissions": [
     "storage"
