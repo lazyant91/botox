@@ -10,14 +10,14 @@
 
 ```mermaid
 graph TD
-    A[유튜브 페이지 로드 / 검색] -->|0ms 즉시 차단| B(CSS 엔진: block-shorts-active 클래스)
+    A[유튜브 페이지 로드 / 검색] -->|0ms 즉시 차단| B(CSS 엔진: botox-shorts-active 클래스)
     B -->|화면 깜빡임 없이 즉각 은닉| C[사용자 뷰포트]
     
     A -->|DOM 노드 추가 감지| D(MutationObserver)
     D -->|150ms 디바운스| E{이미 처리된 노드?}
     E -->|Yes: O_1 스킵| F[연산 방지 및 무과부하]
     E -->|No| G(applyFilteringDebounced 실행)
-    G -->|쇼츠 개별 노드/선반 마킹| H[data-filter-processed 부여]
+    G -->|쇼츠 개별 노드/선반 마킹| H[WeakSet 캐시 등록]
     
     G -->|쇼츠 제거로 스크롤 센서 치솟음 감지| I(continuation-item-renderer 노출)
     I -->|600ms 강제 은닉 및 스케줄러 디바운스| J[유튜브 API 추가 호출 제한 / 렉 차단]
