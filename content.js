@@ -152,15 +152,25 @@ function filterCard(card, resetVisibility = false) {
   return false;
 }
 
-// 디바운스 대기열 필터링 개시
-function applyFiltering(resetVisibility = false) {
-  if (resetVisibility) {
-    processed = new WeakSet();
-    const allCards = document.querySelectorAll(CARD_SELECTOR);
-    allCards.forEach(card => filterCard(card, true));
-    return;
-  }
+// 기존 가시성 전체를 물리적으로 복구(초기화)하는 헬퍼 함수
+function resetVisibility() {
+  const allCards = document.querySelectorAll(CARD_SELECTOR);
+  allCards.forEach(card => {
+    card.classList.remove('botox-hidden-short');
+    card.style.removeProperty('display');
+  });
+}
 
+// 전체 필터 상태를 초기화하고 화면상의 요소를 전수 재필터링하는 핵심 함수
+function reapplyFiltering() {
+  processed = new WeakSet();
+  pending.clear();
+  resetVisibility();
+  scheduleFilter(document.querySelectorAll(CARD_SELECTOR));
+}
+
+// 디바운스 대기열 필터링 개시
+function applyFiltering() {
   // 초기 렌더링된 전체 노드 검사 대기열(pending)에 추가
   const allElements = document.querySelectorAll(CARD_SELECTOR);
   scheduleFilter(allElements);
@@ -338,7 +348,7 @@ function blockChannel(channelIdentifier, displayName) {
       }
       chrome.storage.local.set({ blockedChannels, channelDisplayNames: displayNames }, () => {
         console.log(`[AI Filter] 차단 추가: ${cleaned} (${displayName || ''})`);
-        applyFiltering();
+        reapplyFiltering();
         updateSettingModalList();
       });
     });
@@ -355,7 +365,7 @@ function unblockChannel(channelIdentifier) {
     delete displayNames[cleaned];
     chrome.storage.local.set({ blockedChannels, channelDisplayNames: displayNames }, () => {
       console.log(`[AI Filter] 차단 해제: ${cleaned}`);
-      applyFiltering(true);
+      reapplyFiltering();
       updateSettingModalList();
     });
   });
@@ -722,14 +732,14 @@ if (isContextValid()) {
     // 팝업으로부터 차단 채널 목록 업데이트 수신 시
     if (message.action === "UPDATE_BLOCKED_CHANNELS") {
       blockedChannels = message.blockedChannels;
-      applyFiltering(true);
+      reapplyFiltering();
       updateSettingModalList();
     } 
     // 팝업으로부터 Shorts 차단 토글 설정 수신 시
     else if (message.action === "UPDATE_BLOCK_SHORTS") {
       blockShorts = message.blockShorts;
       toggleCssShortsActive(blockShorts);
-      applyFiltering(true);
+      reapplyFiltering();
     }
   });
 }
@@ -766,8 +776,7 @@ async function init() {
 
 // SPA 라우팅 네비게이션 전환 시 WeakSet 메모리 리셋 및 재스캔 트리거
 document.addEventListener("yt-navigate-finish", () => {
-  processed = new WeakSet();
-  applyFiltering();
+  reapplyFiltering();
 });
 
 // 진입 타이밍 분기 실행

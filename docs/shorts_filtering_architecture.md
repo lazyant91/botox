@@ -32,22 +32,22 @@ graph TD
 *   **원리**: JavaScript가 초기 구동되고 DOM 탐색 엔진이 돌기 전에 브라우저가 HTML을 파싱하는 즉시 렌더링 트리에서 쇼츠 요소를 배제합니다.
 *   **세부 규칙**:
     ```css
-    body.block-shorts-active ytd-reel-shelf-renderer,
-    body.block-shorts-active ytd-reel-item-renderer,
-    body.block-shorts-active grid-shelf-view-model,
-    body.block-shorts-active ytd-video-renderer:has(a[href*="/shorts/"]),
-    body.block-shorts-active ytd-video-renderer:has(a[href*="/shorts?"]),
-    body.block-shorts-active ytd-video-renderer:has(a[href$="/shorts"]),
-    body.block-shorts-active ytd-rich-item-renderer:has(a[href*="/shorts/"]),
-    body.block-shorts-active ytd-rich-item-renderer:has(a[href*="/shorts?"]),
-    body.block-shorts-active ytd-rich-item-renderer:has(a[href$="/shorts"]),
-    body.block-shorts-active ytd-compact-video-renderer:has(a[href*="/shorts/"]),
-    body.block-shorts-active ytd-compact-video-renderer:has(a[href*="/shorts?"]),
-    body.block-shorts-active ytd-compact-video-renderer:has(a[href$="/shorts"]) {
+    body.botox-shorts-active ytd-reel-shelf-renderer,
+    body.botox-shorts-active ytd-reel-item-renderer,
+    body.botox-shorts-active grid-shelf-view-model,
+    body.botox-shorts-active ytd-video-renderer:has(a[href*="/shorts/"]),
+    body.botox-shorts-active ytd-video-renderer:has(a[href*="/shorts?"]),
+    body.botox-shorts-active ytd-video-renderer:has(a[href$="/shorts"]),
+    body.botox-shorts-active ytd-rich-item-renderer:has(a[href*="/shorts/"]),
+    body.botox-shorts-active ytd-rich-item-renderer:has(a[href*="/shorts?"]),
+    body.botox-shorts-active ytd-rich-item-renderer:has(a[href$="/shorts"]),
+    body.botox-shorts-active ytd-compact-video-renderer:has(a[href*="/shorts/"]),
+    body.botox-shorts-active ytd-compact-video-renderer:has(a[href*="/shorts?"]),
+    body.botox-shorts-active ytd-compact-video-renderer:has(a[href$="/shorts"]) {
       display: none !important;
     }
     ```
-*   **동작 제어**: `content.js` 초기화 시 및 옵션 변경 시 `document.body`에 `block-shorts-active` 클래스를 추가/제거하여 0ms 반응 속도로 토글을 제어합니다.
+*   **동작 제어**: `content.js` 초기화 시 및 옵션 변경 시 `document.body`에 `botox-shorts-active` 클래스를 추가/제거하여 0ms 반응 속도로 토글을 제어합니다.
 
 ### 2.2. 무한 스크롤 폭주 억제기 (Continuation Throttle)
 *   **대상 엘리먼트**: `ytd-continuation-item-renderer` (유튜브의 다음 페이지 로딩 센서 비디오 카드)
@@ -59,8 +59,8 @@ graph TD
 ### 2.3. O(1) 필터 스킵 캐싱 레이어 (State Marking)
 *   **원리**: 스크롤이 내려갈 때마다 화면에 이미 표시되어 필터링 검증이 완료된 수백 개의 일반 비디오 노드를 매번 MutationObserver가 재스캔하여 `innerHTML` 검색이나 `querySelector` 오버헤드를 일으키는 현상을 방지합니다.
 *   **해결책**:
-    *   필터 처리가 끝난 비디오 노드에는 `data-filter-processed-video="true"`, 쇼츠 선반(섹션)에는 `data-filter-processed-shelf="true"` 속성을 부여합니다.
-    *   다음 스캔 시 해당 속성이 있는 노드는 연산 없이 즉시 `return` 처리하여 DOM 전체 탐색 비용을 최소화합니다.
+    *   필터 처리가 끝난 비디오 노드에는 `WeakSet` 메모리 주소 매핑을 활용해 중복 검사를 방지합니다.
+    *   다음 스캔 시 캐시에 존재하는 노드는 연산 없이 즉시 `return` 처리하여 DOM 전체 탐색 비용을 최소화합니다.
 
 ### 2.4. 비동기 디바운스 렌더링 (Debounced Filtering)
 *   **원리**: 브라우저의 레이아웃 스레드와 스크립트 실행 스레드의 충돌을 완화하기 위해 `150ms` 디바운싱 타이머를 통해 연속적인 Mutation 이벤트를 하나의 프레임 버퍼로 모아 일괄 처리합니다.
